@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "name": "GeoAgriSense Demo Field",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Demo field boundary",
+        "note": "Synthetic demonstration geometry — replace with real farm boundary."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [31.035, -17.808],
+          [31.065, -17.808],
+          [31.065, -17.832],
+          [31.035, -17.832],
+          [31.035, -17.808]
+        ]]
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+point_id,crop,latitude,longitude,soil_moisture_pct,temperature_c,vegetation_index,pest_pressure_pct
+SP-01,Lettuce,-17.814,31.035,72,24.1,0.78,8
+SP-02,Lettuce,-17.817,31.043,54,26.8,0.64,24
+SP-03,Lettuce,-17.820,31.052,31,29.2,0.48,58
+SP-04,Red cabbage,-17.823,31.061,45,27.6,0.59,36
+SP-05,Red cabbage,-17.826,31.043,68,25.2,0.73,12
+SP-06,Lettuce,-17.829,31.054,38,28.4,0.53,47
