@@ -1,4 +1,5 @@
 import os
+
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -9,108 +10,143 @@ load_dotenv()
 
 class GeminiService:
     """
-    GeoAgriSense Gemini service.
+    Gemini integration for GeoAgriSense.
 
-    Provides:
-    - agricultural text Q&A
-    - crop-image analysis
+    Gemini is used for:
+    1. Agricultural Q&A
+    2. Multimodal crop-image analysis
+    3. Context-aware analysis of field observations
     """
 
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
-        self.model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+        self.model = os.getenv(
+            "GEMINI_MODEL",
+            "gemini-3.6-flash",
+        )
 
         if not self.api_key:
             raise RuntimeError(
-                "GEMINI_API_KEY is not configured in the .env file."
+                "GEMINI_API_KEY is not configured."
             )
 
-        self.client = genai.Client(api_key=self.api_key)
+        self.client = genai.Client(
+            api_key=self.api_key
+        )
 
-    def ask(self, question: str) -> str:
-        """
-        Ask Gemini an agricultural/scouting question.
-        """
-
+    def ask(self, question):
         prompt = f"""
-You are GeoAgriSense, an agricultural decision-support assistant.
+You are GeoAgriSense, an agricultural decision-support
+assistant.
 
-Your role is to help farmers and agricultural field scouts interpret
-crop observations and make practical scouting decisions.
+Help a farmer or field scout understand the following question:
 
-Question:
 {question}
 
-Provide a concise, practical answer suitable for a farmer or field scout.
+Provide:
+- likely explanations
+- what should be checked in the field
+- practical next steps
+- important limitations
 
-Where appropriate:
-- identify possible causes
-- explain what should be checked in the field
-- recommend practical next steps
-- distinguish observation from certainty
-- do not claim a disease diagnosis unless the available evidence supports it
+Do not present an uncertain diagnosis as fact.
 """
 
         return self._generate(prompt)
 
-    def analyze_crop_image(
+    def analyze_observation(
         self,
-        image_bytes: bytes,
-        mime_type: str,
-        crop: str = "Unknown crop",
-        location: str = "Unknown field location",
-        additional_context: str = "",
-    ) -> str:
+        image_bytes,
+        mime_type,
+        observation,
+    ):
         """
-        Analyze a crop photograph using Gemini vision capabilities.
+        Analyze a crop photograph using Gemini with
+        geospatial/scouting context.
         """
+
+        crop = observation.get("crop", "Unknown")
+        block = observation.get("block_id", "Unknown")
+        symptom = observation.get(
+            "symptom",
+            observation.get("observation", "Unknown"),
+        )
+        severity = observation.get(
+            "severity",
+            "Unknown",
+        )
+        date = observation.get(
+            "date",
+            observation.get("observed_at", "Unknown"),
+        )
+        notes = observation.get(
+            "notes",
+            "No additional notes.",
+        )
+
+        latitude = observation.get(
+            "latitude",
+            "Unknown",
+        )
+
+        longitude = observation.get(
+            "longitude",
+            "Unknown",
+        )
 
         prompt = f"""
-You are the AI crop-scanning component of GeoAgriSense.
+You are the multimodal agricultural intelligence component
+of GeoAgriSense.
 
-Analyze the supplied photograph of a crop.
+A field scout captured the attached crop photograph.
 
-Known context:
+FIELD CONTEXT
+-------------
 Crop: {crop}
-Field/location: {location}
-Additional scout context: {additional_context or "None provided"}
+Block: {block}
+Reported symptom: {symptom}
+Reported severity: {severity}
+Observation date: {date}
+Latitude: {latitude}
+Longitude: {longitude}
+Scout notes: {notes}
 
-Produce a practical agricultural scouting report with these sections:
+Analyze the photograph together with this field context.
 
-## 1. Visual observations
-Describe what is visibly present in the photograph.
+Return a practical scouting report using exactly these sections:
 
-## 2. Crop condition
-Give an overall assessment of the apparent crop condition.
+## Visual observations
 
-## 3. Possible causes
-Identify plausible causes of the observed symptoms.
-Do not present a possibility as a confirmed diagnosis.
+Describe only what can reasonably be seen.
 
-## 4. Risk level
-Classify the apparent field risk as:
+## Crop condition
+
+Give an overall assessment.
+
+## Possible causes
+
+List plausible causes, but do not claim certainty.
+
+## Risk assessment
+
+Classify the apparent risk as:
 LOW, MEDIUM, or HIGH.
 
-Explain why.
+Explain the reasoning.
 
-## 5. Recommended field checks
-Give specific things a farmer/scout should inspect next.
+## Recommended field checks
 
-## 6. Recommended action
-Give practical immediate actions, prioritising:
-- containment where appropriate
-- monitoring
-- irrigation/nutrition checks
-- pest scouting
-- disease confirmation
-- escalation to an agricultural specialist where necessary
+List specific checks the farmer/scout should perform.
 
-## 7. Confidence and limitations
-Explain what cannot reliably be determined from a single photograph.
+## Recommended next action
 
-Important:
-This is agricultural decision support, not a definitive plant disease diagnosis.
-Base conclusions only on visible evidence and the provided context.
+Give practical next steps.
+
+## Limitations
+
+Explain what cannot reliably be determined from one photograph.
+
+This is decision support, not a definitive plant disease diagnosis.
 """
 
         image_part = types.Part.from_bytes(
@@ -119,19 +155,37 @@ Base conclusions only on visible evidence and the provided context.
         )
 
         return self._generate(
-            contents=[
+            [
                 image_part,
                 prompt,
             ]
         )
 
-    def _generate(self, contents) -> str:
-        """
-        Generate a Gemini response.
+    def analyze_crop_image(
+        self,
+        image_bytes,
+        mime_type,
+        crop="Unknown",
+        location="Unknown",
+        additional_context="",
+    ):
+        """Generic crop-image analysis."""
 
-        Uses the configured model and provides a clean error for temporary
-        Gemini service outages.
-        """
+        observation = {
+            "crop": crop,
+            "block_id": location,
+            "symptom": "General crop condition",
+            "severity": "Unknown",
+            "notes": additional_context,
+        }
+
+        return self.analyze_observation(
+            image_bytes,
+            mime_type,
+            observation,
+        )
+
+    def _generate(self, contents):
 
         try:
             response = self.client.models.generate_content(
@@ -145,19 +199,20 @@ Base conclusions only on visible evidence and the provided context.
             return response.text
 
         except Exception as exc:
-            error_text = str(exc)
 
-            if "503" in error_text or "UNAVAILABLE" in error_text:
+            message = str(exc)
+
+            if "503" in message or "UNAVAILABLE" in message:
                 return (
-                    "Gemini is temporarily unavailable because the selected "
-                    "model is experiencing high demand. Please try again "
-                    "shortly."
+                    "Gemini is temporarily unavailable because "
+                    "the selected model is experiencing high demand. "
+                    "Please try again shortly."
                 )
 
-            if "404" in error_text or "NOT_FOUND" in error_text:
+            if "404" in message or "NOT_FOUND" in message:
                 return (
-                    f"The configured Gemini model '{self.model}' is not "
-                    "currently available to this API key."
+                    f"The Gemini model '{self.model}' is unavailable "
+                    "for this API configuration."
                 )
 
-            return f"Gemini request failed: {error_text}"
+            return f"Gemini request failed: {message}"

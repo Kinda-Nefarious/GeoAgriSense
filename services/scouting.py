@@ -1,11 +1,42 @@
 import pandas as pd
 
 
+SEVERITY_ORDER = {
+    "High": 4,
+    "Investigate": 3,
+    "Watch": 2,
+    "Low": 1,
+}
+
+
+def normalize_severity(value):
+    """Normalize different severity labels into dashboard categories."""
+    if value is None:
+        return "Watch"
+
+    value = str(value).strip().lower()
+
+    mapping = {
+        "high": "High",
+        "severe": "High",
+        "critical": "High",
+        "investigate": "Investigate",
+        "medium": "Investigate",
+        "moderate": "Investigate",
+        "watch": "Watch",
+        "low": "Low",
+        "minor": "Low",
+    }
+
+    return mapping.get(value, "Watch")
+
+
 def calculate_risk(row):
     """
-    Simple rule-based scouting risk model.
+    Calculate risk from environmental/scouting measurements.
 
-    This is deliberately transparent for the MVP.
+    Used primarily for sample_scouting.csv.
+    Actual GeoJSON observations retain their supplied severity.
     """
 
     soil = float(row.get("soil_moisture_pct", 50))
@@ -14,13 +45,11 @@ def calculate_risk(row):
 
     score = 0
 
-    # Soil moisture stress
     if soil < 40:
         score += 2
     elif soil < 50:
         score += 1
 
-    # Pest pressure
     if pest >= 50:
         score += 3
     elif pest >= 25:
@@ -28,7 +57,6 @@ def calculate_risk(row):
     elif pest >= 10:
         score += 1
 
-    # Vegetation stress
     if vegetation < 0.50:
         score += 3
     elif vegetation < 0.60:
@@ -40,28 +68,72 @@ def calculate_risk(row):
         return "High"
 
     if score >= 2:
-        return "Medium"
+        return "Investigate"
 
     return "Low"
 
 
 def prepare_observations(df):
     """
-    Add calculated risk to observation dataframe.
+    Prepare CSV scouting data.
+
+    Existing GeoJSON observations with a supplied severity are not
+    overwritten.
     """
 
     df = df.copy()
 
+    if "severity" in df.columns:
+        df["severity"] = df["severity"].apply(normalize_severity)
+
     if "risk" not in df.columns:
-        df["risk"] = df.apply(calculate_risk, axis=1)
+        if {
+            "soil_moisture_pct",
+            "pest_pressure_pct",
+            "vegetation_index",
+        }.issubset(df.columns):
+            df["risk"] = df.apply(calculate_risk, axis=1)
+        else:
+            df["risk"] = (
+                df["severity"]
+                if "severity" in df.columns
+                else "Watch"
+            )
 
     return df
 
 
+def observation_summary(df):
+    """Return dashboard summary statistics for GeoJSON observations."""
+
+    if df.empty:
+        return {
+            "total": 0,
+            "high": 0,
+            "investigate": 0,
+            "watch": 0,
+            "low": 0,
+        }
+
+    severity = (
+        df["severity"]
+        .fillna("Watch")
+        .apply(normalize_severity)
+    )
+
+    return {
+        "total": len(df),
+        "high": int((severity == "High").sum()),
+        "investigate": int(
+            (severity == "Investigate").sum()
+        ),
+        "watch": int((severity == "Watch").sum()),
+        "low": int((severity == "Low").sum()),
+    }
+
+
 def scouting_summary(df):
-    """
-    Calculate dashboard summary metrics.
-    """
+    """Summary for environmental scouting CSV."""
 
     if df.empty:
         return {
@@ -71,13 +143,25 @@ def scouting_summary(df):
             "avg_vegetation": 0,
         }
 
+    risk_column = (
+        df["risk"]
+        if "risk" in df.columns
+        else pd.Series(["Low"] * len(df))
+    )
+
     return {
         "points": len(df),
-        "high_risk": int((df["risk"] == "High").sum()),
-        "avg_moisture": round(
-            float(df["soil_moisture_pct"].mean()), 1
+        "high_risk": int(
+            (risk_column == "High").sum()
         ),
-        "avg_vegetation": round(
-            float(df["vegetation_index"].mean()), 2
+        "avg_moisture": (
+            round(float(df["soil_moisture_pct"].mean()), 1)
+            if "soil_moisture_pct" in df.columns
+            else 0
+        ),
+        "avg_vegetation": (
+            round(float(df["vegetation_index"].mean()), 2)
+            if "vegetation_index" in df.columns
+            else 0
         ),
     }
