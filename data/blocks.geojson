@@ -1,0 +1,197 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "block_id": "L-01",
+        "name": "Lettuce Block 1",
+        "crop": "Lettuce",
+        "approx_area_ha": 0.42,
+        "planting_date": "2026-08-01",
+        "status": "Growing",
+        "notes": "Drip irrigation, north-facing slope"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              30.97,
+              -17.5002
+            ],
+            [
+              30.9712,
+              -17.5
+            ],
+            [
+              30.9718,
+              -17.5005
+            ],
+            [
+              30.9716,
+              -17.5013
+            ],
+            [
+              30.9704,
+              -17.5014
+            ],
+            [
+              30.9699,
+              -17.5008
+            ],
+            [
+              30.97,
+              -17.5002
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "block_id": "L-02",
+        "name": "Lettuce Block 2",
+        "crop": "Lettuce",
+        "approx_area_ha": 0.38,
+        "planting_date": "2026-08-10",
+        "status": "Growing",
+        "notes": "Adjacent to water tank, slightly lower elevation"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              30.972,
+              -17.5001
+            ],
+            [
+              30.9735,
+              -17.5003
+            ],
+            [
+              30.974,
+              -17.501
+            ],
+            [
+              30.9737,
+              -17.5015
+            ],
+            [
+              30.9724,
+              -17.5014
+            ],
+            [
+              30.9719,
+              -17.5008
+            ],
+            [
+              30.972,
+              -17.5001
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "block_id": "L-03",
+        "name": "Lettuce Block 3",
+        "crop": "Lettuce",
+        "approx_area_ha": 0.55,
+        "planting_date": "2026-07-20",
+        "status": "Mature",
+        "notes": "Oldest block, nearest to access road, prior pest history"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              30.9699,
+              -17.5016
+            ],
+            [
+              30.9713,
+              -17.5015
+            ],
+            [
+              30.9719,
+              -17.5019
+            ],
+            [
+              30.9721,
+              -17.5027
+            ],
+            [
+              30.9712,
+              -17.5031
+            ],
+            [
+              30.9701,
+              -17.5029
+            ],
+            [
+              30.9697,
+              -17.5022
+            ],
+            [
+              30.9699,
+              -17.5016
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "block_id": "C-01",
+        "name": "Cabbage Block 1",
+        "crop": "Cabbage",
+        "approx_area_ha": 0.61,
+        "planting_date": "2026-08-05",
+        "status": "Growing",
+        "notes": "Bordered by tree line on east edge, more shade in afternoon"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              30.9723,
+              -17.5016
+            ],
+            [
+              30.9737,
+              -17.5017
+            ],
+            [
+              30.9739,
+              -17.5024
+            ],
+            [
+              30.9736,
+              -17.503
+            ],
+            [
+              30.9722,
+              -17.5031
+            ],
+            [
+              30.9718,
+              -17.5024
+            ],
+            [
+              30.9723,
+              -17.5016
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}
