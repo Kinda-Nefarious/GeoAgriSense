@@ -1,66 +1,278 @@
 import json
-import os
 from pathlib import Path
 
-import folium
 import pandas as pd
 import streamlit as st
-from dotenv import load_dotenv
+import folium
 from streamlit_folium import st_folium
 
-from services.gemini_service import ask_gemini
+from services.gemini_service import GeminiService
 from services.scouting import (
-    build_demo_scouting_data,
-    classify_risk,
-    summarize_scouting,
+    prepare_observations,
+    scouting_summary,
 )
 
 
 # ============================================================
-# Configuration
+# CONFIGURATION
 # ============================================================
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
 
-APP_DIR = Path(__file__).resolve().parent
+DEFAULT_CSV = DATA_DIR / "sample_scouting.csv"
+DEFAULT_GEOJSON = DATA_DIR / "demo_field.geojson"
+
 
 st.set_page_config(
-    page_title="GeoAgriSense",
+    page_title="GeoAgriSense MVP",
     page_icon="🌱",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
 
 # ============================================================
-# Styling
+# HELPERS
 # ============================================================
 
-st.markdown(
-    """
-    <style>
+@st.cache_data
+def load_observations(path):
+    if not path.exists():
+        return pd.DataFrame()
 
-    .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 2rem;
-    }
+    df = pd.read_csv(path)
 
-    .demo-note {
-        padding: 10px 14px;
-        border-left: 4px solid #4CAF50;
-        background: rgba(76,175,80,.08);
-        border-radius: 6px;
-        margin-bottom: 15px;
-    }
+    return prepare_observations(df)
 
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+
+@st.cache_data
+def load_geojson(path):
+    if not path.exists():
+        return None
+
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+@st.cache_resource
+def get_gemini():
+    try:
+        return GeminiService()
+    except Exception:
+        return None
+
+
+def create_map(df, geojson=None):
+
+    if df.empty:
+        center = [-17.8, 31.0]
+    else:
+        center = [
+            float(df["latitude"].mean()),
+            float(df["longitude"].mean()),
+        ]
+
+    fmap = folium.Map(
+        location=center,
+        zoom_start=15,
+        control_scale=True,
+    )
+
+    # Field boundary
+    if geojson:
+
+        folium.GeoJson(
+            geojson,
+            name="Farm boundary",
+            style_function=lambda feature: {
+                "fillColor": "#2e7d32",
+                "color": "#1b5e20",
+                "weight": 2,
+                "fillOpacity": 0.12,
+            },
+            tooltip="Field boundary",
+        ).add_to(fmap)
+
+    # Scouting points
+    for _, row in df.iterrows():
+
+        risk = str(row.get("risk", "Unknown"))
+
+        if risk == "High":
+            color = "red"
+        elif risk == "Medium":
+            color = "orange"
+        else:
+            color = "green"
+
+        popup = f"""
+        <b>{row.get('point_id', 'Unknown')}</b><br>
+        Crop: {row.get('crop', 'Unknown')}<br>
+        Soil moisture: {row.get('soil_moisture_pct', '-')}%<br>
+        Temperature: {row.get('temperature_c', '-')} °C<br>
+        Vegetation index: {row.get('vegetation_index', '-')}<br>
+        Pest pressure: {row.get('pest_pressure_pct', '-')}%<br>
+        Risk: <b>{risk}</b>
+        """
+
+        folium.Marker(
+            location=[
+                float(row["latitude"]),
+                float(row["longitude"]),
+            ],
+            popup=folium.Popup(popup, max_width=350),
+            tooltip=f"{row.get('point_id')} — {risk} risk",
+            icon=folium.Icon(
+                color=color,
+                icon="leaf",
+                prefix="fa",
+            ),
+        ).add_to(fmap)
+
+    folium.LayerControl().add_to(fmap)
+
+    return fmap
 
 
 # ============================================================
-# Header
+# DATA
+# ============================================================
+
+df = load_observations(DEFAULT_CSV)
+
+if df.empty:
+
+    df = pd.DataFrame(
+        [
+            {
+                "point_id": "SP-01",
+                "crop": "Lettuce",
+                "latitude": -17.800,
+                "longitude": 31.000,
+                "soil_moisture_pct": 72,
+                "temperature_c": 24.1,
+                "vegetation_index": 0.78,
+                "pest_pressure_pct": 8,
+            },
+            {
+                "point_id": "SP-02",
+                "crop": "Lettuce",
+                "latitude": -17.801,
+                "longitude": 31.001,
+                "soil_moisture_pct": 54,
+                "temperature_c": 26.8,
+                "vegetation_index": 0.64,
+                "pest_pressure_pct": 24,
+            },
+            {
+                "point_id": "SP-03",
+                "crop": "Lettuce",
+                "latitude": -17.802,
+                "longitude": 31.002,
+                "soil_moisture_pct": 31,
+                "temperature_c": 29.2,
+                "vegetation_index": 0.48,
+                "pest_pressure_pct": 58,
+            },
+            {
+                "point_id": "SP-04",
+                "crop": "Red cabbage",
+                "latitude": -17.799,
+                "longitude": 31.003,
+                "soil_moisture_pct": 45,
+                "temperature_c": 27.6,
+                "vegetation_index": 0.59,
+                "pest_pressure_pct": 36,
+            },
+            {
+                "point_id": "SP-05",
+                "crop": "Red cabbage",
+                "latitude": -17.798,
+                "longitude": 31.001,
+                "soil_moisture_pct": 68,
+                "temperature_c": 25.2,
+                "vegetation_index": 0.73,
+                "pest_pressure_pct": 12,
+            },
+            {
+                "point_id": "SP-06",
+                "crop": "Lettuce",
+                "latitude": -17.803,
+                "longitude": 31.000,
+                "soil_moisture_pct": 38,
+                "temperature_c": 28.4,
+                "vegetation_index": 0.53,
+                "pest_pressure_pct": 47,
+            },
+        ]
+    )
+
+    df = prepare_observations(df)
+
+
+geojson = load_geojson(DEFAULT_GEOJSON)
+
+summary = scouting_summary(df)
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+with st.sidebar:
+
+    st.title("GeoAgriSense MVP")
+
+    st.success("Core application loaded")
+
+    st.subheader("Demo controls")
+
+    uploaded_boundary = st.file_uploader(
+        "Upload field boundary / GeoJSON",
+        type=["geojson", "json"],
+        help="Upload a farm boundary for spatial visualization.",
+    )
+
+    if uploaded_boundary:
+
+        try:
+
+            geojson = json.load(uploaded_boundary)
+
+            st.success("Field boundary loaded.")
+
+        except Exception as exc:
+
+            st.error(f"Invalid GeoJSON: {exc}")
+
+    st.divider()
+
+    st.subheader("System status")
+
+    gemini = get_gemini()
+
+    if gemini:
+
+        st.success("Gemini API key loaded")
+
+        st.caption(
+            f"Model: `{gemini.model}`"
+        )
+
+    else:
+
+        st.error("Gemini API not configured")
+
+    st.divider()
+
+    st.caption(
+        "Demo measurements are synthetic and are not measurements "
+        "from Sunnyside Farm."
+    )
+
+
+# ============================================================
+# HEADER
 # ============================================================
 
 st.title("🌱 GeoAgriSense")
@@ -70,128 +282,57 @@ st.caption(
 )
 
 
-# ============================================================
-# Sidebar
-# ============================================================
-
-with st.sidebar:
-
-    st.header("GeoAgriSense MVP")
-
-    st.success("Core application loaded")
-
-    st.subheader("Demo controls")
-
-    uploaded_geojson = st.file_uploader(
-        "Upload field boundary / GeoJSON",
-        type=["geojson", "json"],
-        help=(
-            "Optional. Upload a real field boundary "
-            "to replace the demo geometry."
-        ),
-    )
-
-    st.divider()
-
-    st.subheader("System status")
-
-    api_key_present = bool(
-        os.getenv("GEMINI_API_KEY")
-    )
-
-    if api_key_present:
-        st.write("Gemini API key: ✅ loaded")
-    else:
-        st.write("Gemini API key: ❌ missing")
-
-    model_name = os.getenv(
-        "GEMINI_MODEL",
-        "gemini-3.6-flash",
-    )
-
-    st.write(f"Gemini model: `{model_name}`")
-
-    st.divider()
-
-    st.caption(
-        "Demo measurements are synthetic and are not "
-        "measurements from Sunnyside Farm."
-    )
-
-
-# ============================================================
-# DATA LAYER
-# ============================================================
-
-scout_df = build_demo_scouting_data()
-
-scout_df["risk"] = scout_df.apply(
-    classify_risk,
-    axis=1,
-)
-
-summary = summarize_scouting(
-    scout_df
-)
+st.divider()
 
 
 # ============================================================
 # KPI DASHBOARD
 # ============================================================
 
-c1, c2, c3, c4 = st.columns(4)
+col1, col2, col3, col4 = st.columns(4)
 
-
-with c1:
+with col1:
     st.metric(
         "Scouting points",
-        len(scout_df),
+        summary["points"],
     )
 
-
-with c2:
+with col2:
     st.metric(
         "High-risk points",
         summary["high_risk"],
     )
 
-
-with c3:
+with col3:
     st.metric(
         "Average soil moisture",
-        f'{summary["avg_moisture"]:.0f}%',
+        f"{summary['avg_moisture']}%",
     )
 
-
-with c4:
+with col4:
     st.metric(
         "Average vegetation index",
-        f'{summary["avg_vegetation"]:.2f}',
+        summary["avg_vegetation"],
     )
 
 
-st.markdown(
-    """
-    <div class="demo-note">
-        <strong>Demo mode:</strong>
-        The scouting measurements shown here are
-        synthetic demonstration data.
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.info(
+    "Demo mode: the scouting measurements shown here are synthetic "
+    "demonstration data."
 )
 
 
 # ============================================================
-# MAIN TABS
+# TABS
 # ============================================================
 
-tab_dashboard, tab_map, tab_scout, tab_ai = st.tabs(
+tab_dashboard, tab_map, tab_scout, tab_ai, tab_image = st.tabs(
     [
         "📊 Dashboard",
         "🗺️ Spatial Map",
         "🔎 Scout Analysis",
         "🤖 AI Assistant",
+        "📷 Crop Image Analysis",
     ]
 )
 
@@ -202,44 +343,46 @@ tab_dashboard, tab_map, tab_scout, tab_ai = st.tabs(
 
 with tab_dashboard:
 
-    st.subheader("Field overview")
+    st.header("Field overview")
 
-    col1, col2 = st.columns(2)
+    col_left, col_right = st.columns([1, 1])
 
-    with col1:
+    with col_left:
 
-        st.markdown("### Risk distribution")
+        st.subheader("Risk distribution")
 
         risk_counts = (
-            scout_df["risk"]
+            df["risk"]
             .value_counts()
             .reindex(
-                ["Low", "Medium", "High"],
+                ["High", "Medium", "Low"],
                 fill_value=0,
             )
         )
 
         st.bar_chart(risk_counts)
 
+    with col_right:
 
-    with col2:
+        st.subheader("Scouting observations")
 
-        st.markdown("### Scouting observations")
+        display_columns = [
+            "point_id",
+            "crop",
+            "soil_moisture_pct",
+            "temperature_c",
+            "vegetation_index",
+            "pest_pressure_pct",
+            "risk",
+        ]
 
-        display_df = scout_df[
-            [
-                "point_id",
-                "crop",
-                "soil_moisture_pct",
-                "temperature_c",
-                "vegetation_index",
-                "pest_pressure_pct",
-                "risk",
-            ]
-        ].copy()
+        available_columns = [
+            c for c in display_columns
+            if c in df.columns
+        ]
 
         st.dataframe(
-            display_df,
+            df[available_columns],
             use_container_width=True,
             hide_index=True,
         )
@@ -251,134 +394,23 @@ with tab_dashboard:
 
 with tab_map:
 
-    st.subheader("Spatial scouting map")
+    st.header("Spatial field intelligence")
 
-    # Synthetic demonstration centre.
-    demo_center = [
-        -17.82,
-        31.05,
-    ]
-
-    m = folium.Map(
-        location=demo_center,
-        zoom_start=13,
-        control_scale=True,
+    st.write(
+        "GeoAgriSense combines scouting observations with geographic "
+        "location to identify where intervention may be required."
     )
 
-
-    # --------------------------------------------------------
-    # Demo field boundary
-    # --------------------------------------------------------
-
-    folium.Rectangle(
-        bounds=[
-            [
-                demo_center[0] - 0.012,
-                demo_center[1] - 0.015,
-            ],
-            [
-                demo_center[0] + 0.012,
-                demo_center[1] + 0.015,
-            ],
-        ],
-        color="#2e7d32",
-        fill=True,
-        fill_opacity=0.08,
-        tooltip=(
-            "Demo field boundary — "
-            "replace with real GeoJSON"
-        ),
-    ).add_to(m)
-
-
-    # --------------------------------------------------------
-    # Risk colours
-    # --------------------------------------------------------
-
-    color_map = {
-        "Low": "green",
-        "Medium": "orange",
-        "High": "red",
-    }
-
-
-    # --------------------------------------------------------
-    # Scouting points
-    # --------------------------------------------------------
-
-    for _, row in scout_df.iterrows():
-
-        popup_html = f"""
-        <b>{row['point_id']}</b><br>
-        Crop: {row['crop']}<br>
-        Soil moisture:
-        {row['soil_moisture_pct']}%<br>
-        Temperature:
-        {row['temperature_c']} °C<br>
-        Vegetation index:
-        {row['vegetation_index']}<br>
-        Pest pressure:
-        {row['pest_pressure_pct']}%<br>
-        Risk:
-        <b>{row['risk']}</b>
-        """
-
-        folium.CircleMarker(
-            location=[
-                row["latitude"],
-                row["longitude"],
-            ],
-            radius=9,
-            color=color_map[row["risk"]],
-            fill=True,
-            fill_opacity=0.8,
-            popup=folium.Popup(
-                popup_html,
-                max_width=300,
-            ),
-        ).add_to(m)
-
-
-    # --------------------------------------------------------
-    # Optional uploaded GeoJSON
-    # --------------------------------------------------------
-
-    if uploaded_geojson is not None:
-
-        try:
-
-            geojson_data = json.load(
-                uploaded_geojson
-            )
-
-            folium.GeoJson(
-                geojson_data,
-                name="Uploaded field boundary",
-                style_function=lambda feature: {
-                    "color": "#1565c0",
-                    "weight": 3,
-                    "fillOpacity": 0.05,
-                },
-                tooltip="Uploaded field boundary",
-            ).add_to(m)
-
-            folium.LayerControl().add_to(m)
-
-            st.success(
-                "Uploaded GeoJSON loaded onto the map."
-            )
-
-        except Exception as exc:
-
-            st.error(
-                f"Could not read GeoJSON: {exc}"
-            )
-
+    fmap = create_map(
+        df,
+        geojson,
+    )
 
     st_folium(
-        m,
-        use_container_width=True,
-        height=560,
+        fmap,
+        width=None,
+        height=600,
+        returned_objects=[],
     )
 
 
@@ -388,136 +420,252 @@ with tab_map:
 
 with tab_scout:
 
-    st.subheader(
-        "Scout prioritisation"
-    )
+    st.header("Scout Analysis")
 
-    st.write(
-        "GeoAgriSense converts field observations "
-        "into scouting priorities so farmers can "
-        "focus attention where intervention may "
-        "be most urgent."
-    )
-
-
-    high_risk = scout_df[
-        scout_df["risk"] == "High"
-    ]
-
+    high_risk = df[df["risk"] == "High"]
 
     if high_risk.empty:
 
         st.success(
-            "No high-risk points in the "
-            "current demo dataset."
+            "No high-risk scouting points detected."
         )
 
     else:
 
+        st.warning(
+            f"{len(high_risk)} high-risk scouting point(s) "
+            "require attention."
+        )
+
         for _, row in high_risk.iterrows():
 
-            st.error(
-                f"{row['point_id']} — "
-                f"{row['crop']}: prioritise scouting. "
-                f"Moisture "
-                f"{row['soil_moisture_pct']}%, "
-                f"pest pressure "
-                f"{row['pest_pressure_pct']}%."
-            )
+            with st.expander(
+                f"{row['point_id']} — {row['crop']} — HIGH RISK"
+            ):
 
+                c1, c2, c3 = st.columns(3)
 
-    st.markdown(
-        "### Recommended actions"
-    )
+                with c1:
+                    st.metric(
+                        "Soil moisture",
+                        f"{row['soil_moisture_pct']}%",
+                    )
 
+                with c2:
+                    st.metric(
+                        "Vegetation index",
+                        row["vegetation_index"],
+                    )
 
-    for action in summary["actions"]:
+                with c3:
+                    st.metric(
+                        "Pest pressure",
+                        f"{row['pest_pressure_pct']}%",
+                    )
 
-        st.write(
-            f"• {action}"
-        )
+                st.markdown(
+                    """
+                    **Suggested field action**
+
+                    1. Visit the location as a priority.
+                    2. Inspect leaves and growing points.
+                    3. Check soil moisture and irrigation performance.
+                    4. Scout for visible pests or disease symptoms.
+                    5. Capture a photograph for AI-assisted assessment.
+                    """
+                )
 
 
 # ============================================================
-# GEMINI ASSISTANT
+# TEXT AI ASSISTANT
 # ============================================================
 
 with tab_ai:
 
-    st.subheader(
-        "Crop Scouting Assistant"
-    )
+    st.header("🤖 GeoAgriSense AI Assistant")
 
     st.write(
-        "Ask GeoAgriSense an agricultural or "
-        "crop-scouting question."
+        "Ask Gemini an agricultural or crop-scouting question."
     )
-
 
     question = st.text_area(
         "Question",
         value=(
-            "Why is regular crop scouting "
-            "important for smallholder farmers?"
+            "What should a farmer check when lettuce shows "
+            "wilting despite recent irrigation?"
         ),
         height=120,
     )
 
-
-    ask = st.button(
+    if st.button(
         "Ask GeoAgriSense",
         type="primary",
-    )
-
-
-    if ask:
+        key="ask_ai",
+    ):
 
         if not question.strip():
 
-            st.warning(
-                "Please enter a question."
+            st.warning("Please enter a question.")
+
+        elif not gemini:
+
+            st.error(
+                "Gemini is not configured. Check GEMINI_API_KEY."
             )
 
         else:
 
-            with st.spinner(
-                "GeoAgriSense is consulting Gemini..."
-            ):
+            with st.spinner("GeoAgriSense is consulting Gemini..."):
 
-                result = ask_gemini(
+                answer = gemini.ask(
                     question.strip()
                 )
 
+            st.markdown(answer)
 
-            if result["ok"]:
 
-                st.success(
-                    "Gemini response"
+# ============================================================
+# IMAGE ANALYSIS
+# ============================================================
+
+with tab_image:
+
+    st.header("📷 AI Crop Image Analysis")
+
+    st.write(
+        "Upload a photograph captured during field scouting. "
+        "GeoAgriSense will send the image to Gemini for visual "
+        "agricultural assessment."
+    )
+
+    st.info(
+        "For the hackathon demonstration, use a clear close-up "
+        "photograph showing leaves, stems, fruit or other visible "
+        "crop symptoms."
+    )
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+
+        crop = st.selectbox(
+            "Crop",
+            [
+                "Lettuce",
+                "Red cabbage",
+                "Tomato",
+                "Covo",
+                "Rape",
+                "Spinach",
+                "Other",
+            ],
+        )
+
+        location = st.text_input(
+            "Field location / scouting point",
+            value="Sunnyside demonstration field",
+        )
+
+        additional_context = st.text_area(
+            "Additional scout observations",
+            placeholder=(
+                "Example: Lower leaves have started turning yellow "
+                "and several plants appear wilted."
+            ),
+            height=100,
+        )
+
+        uploaded_image = st.file_uploader(
+            "Upload crop photograph",
+            type=[
+                "jpg",
+                "jpeg",
+                "png",
+                "webp",
+            ],
+            key="crop_image",
+        )
+
+    with col2:
+
+        if uploaded_image:
+
+            st.image(
+                uploaded_image,
+                caption="Uploaded scouting photograph",
+                use_container_width=True,
+            )
+
+        else:
+
+            st.markdown(
+                """
+                ### What happens here?
+
+                **1. Upload**
+
+                A farmer or field scout captures a crop photograph.
+
+                **2. Context**
+
+                Crop type, location and scout observations are attached.
+
+                **3. AI analysis**
+
+                Gemini analyses the visual evidence.
+
+                **4. Decision support**
+
+                GeoAgriSense returns observations, possible causes,
+                risk level and recommended field checks.
+                """
+            )
+
+    if st.button(
+        "🔬 Analyze Crop with Gemini",
+        type="primary",
+        key="analyze_crop",
+    ):
+
+        if not uploaded_image:
+
+            st.warning(
+                "Please upload a crop photograph first."
+            )
+
+        elif not gemini:
+
+            st.error(
+                "Gemini is not configured. Check GEMINI_API_KEY."
+            )
+
+        else:
+
+            image_bytes = uploaded_image.getvalue()
+
+            mime_type = uploaded_image.type
+
+            with st.spinner(
+                "Gemini is analysing the crop photograph..."
+            ):
+
+                result = gemini.analyze_crop_image(
+                    image_bytes=image_bytes,
+                    mime_type=mime_type,
+                    crop=crop,
+                    location=location,
+                    additional_context=additional_context,
                 )
 
-                st.write(
-                    result["text"]
-                )
+            st.subheader("AI Scouting Report")
 
-            else:
+            st.markdown(result)
 
-                st.warning(
-                    result["message"]
-                )
-
-                if result.get(
-                    "technical_detail"
-                ):
-
-                    with st.expander(
-                        "Technical detail"
-                    ):
-
-                        st.code(
-                            result[
-                                "technical_detail"
-                            ]
-                        )
+            st.caption(
+                "AI-generated agricultural decision support. "
+                "Field confirmation and professional agronomic "
+                "assessment should be used before applying treatments."
+            )
 
 
 # ============================================================
@@ -528,5 +676,5 @@ st.divider()
 
 st.caption(
     "GeoAgriSense — Hack for Humanity MVP | "
-    "Layered prototype: UI → Data → Spatial → AI"
+    "Layered prototype: UI → Data → Spatial Intelligence → AI"
 )

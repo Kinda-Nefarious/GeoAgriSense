@@ -1,116 +1,42 @@
-from __future__ import annotations
-
 import pandas as pd
 
 
-def build_demo_scouting_data() -> pd.DataFrame:
+def calculate_risk(row):
     """
-    Synthetic scouting observations for the GeoAgriSense MVP.
+    Simple rule-based scouting risk model.
 
-    These values are demonstration data only.
-    Replace this function later with real sensor, ODK,
-    drone, database, or farm scouting data.
+    This is deliberately transparent for the MVP.
     """
 
-    rows = [
-        {
-            "point_id": "SP-01",
-            "crop": "Lettuce",
-            "latitude": -17.814,
-            "longitude": 31.035,
-            "soil_moisture_pct": 72,
-            "temperature_c": 24.1,
-            "vegetation_index": 0.78,
-            "pest_pressure_pct": 8,
-        },
-        {
-            "point_id": "SP-02",
-            "crop": "Lettuce",
-            "latitude": -17.817,
-            "longitude": 31.043,
-            "soil_moisture_pct": 54,
-            "temperature_c": 26.8,
-            "vegetation_index": 0.64,
-            "pest_pressure_pct": 24,
-        },
-        {
-            "point_id": "SP-03",
-            "crop": "Lettuce",
-            "latitude": -17.820,
-            "longitude": 31.052,
-            "soil_moisture_pct": 31,
-            "temperature_c": 29.2,
-            "vegetation_index": 0.48,
-            "pest_pressure_pct": 58,
-        },
-        {
-            "point_id": "SP-04",
-            "crop": "Red cabbage",
-            "latitude": -17.823,
-            "longitude": 31.061,
-            "soil_moisture_pct": 45,
-            "temperature_c": 27.6,
-            "vegetation_index": 0.59,
-            "pest_pressure_pct": 36,
-        },
-        {
-            "point_id": "SP-05",
-            "crop": "Red cabbage",
-            "latitude": -17.826,
-            "longitude": 31.043,
-            "soil_moisture_pct": 68,
-            "temperature_c": 25.2,
-            "vegetation_index": 0.73,
-            "pest_pressure_pct": 12,
-        },
-        {
-            "point_id": "SP-06",
-            "crop": "Lettuce",
-            "latitude": -17.829,
-            "longitude": 31.054,
-            "soil_moisture_pct": 38,
-            "temperature_c": 28.4,
-            "vegetation_index": 0.53,
-            "pest_pressure_pct": 47,
-        },
-    ]
-
-    return pd.DataFrame(rows)
-
-
-def classify_risk(row: pd.Series) -> str:
-    """
-    Transparent rule-based scouting risk classifier.
-
-    This is deliberately simple for the MVP.
-    It is not presented as a trained machine-learning model.
-    """
+    soil = float(row.get("soil_moisture_pct", 50))
+    pest = float(row.get("pest_pressure_pct", 0))
+    vegetation = float(row.get("vegetation_index", 0.5))
 
     score = 0
 
-    # Soil moisture
-    if row["soil_moisture_pct"] < 40:
+    # Soil moisture stress
+    if soil < 40:
         score += 2
-    elif row["soil_moisture_pct"] < 55:
-        score += 1
-
-    # Temperature
-    if row["temperature_c"] > 28:
-        score += 1
-
-    # Vegetation condition
-    if row["vegetation_index"] < 0.55:
-        score += 2
-    elif row["vegetation_index"] < 0.65:
+    elif soil < 50:
         score += 1
 
     # Pest pressure
-    if row["pest_pressure_pct"] > 50:
+    if pest >= 50:
+        score += 3
+    elif pest >= 25:
         score += 2
-    elif row["pest_pressure_pct"] > 30:
+    elif pest >= 10:
         score += 1
 
-    if score >= 4:
+    # Vegetation stress
+    if vegetation < 0.50:
+        score += 3
+    elif vegetation < 0.60:
+        score += 2
+    elif vegetation < 0.70:
+        score += 1
+
+    if score >= 5:
         return "High"
 
     if score >= 2:
@@ -119,36 +45,39 @@ def classify_risk(row: pd.Series) -> str:
     return "Low"
 
 
-def summarize_scouting(df: pd.DataFrame) -> dict:
-    """Generate dashboard-level scouting indicators."""
+def prepare_observations(df):
+    """
+    Add calculated risk to observation dataframe.
+    """
 
-    high_risk = int((df["risk"] == "High").sum())
+    df = df.copy()
 
-    actions = []
+    if "risk" not in df.columns:
+        df["risk"] = df.apply(calculate_risk, axis=1)
 
-    if (df["soil_moisture_pct"] < 40).any():
-        actions.append(
-            "Inspect low-moisture zones and verify irrigation performance."
-        )
+    return df
 
-    if (df["pest_pressure_pct"] > 50).any():
-        actions.append(
-            "Scout high pest-pressure points for visible pest or disease symptoms."
-        )
 
-    if (df["vegetation_index"] < 0.55).any():
-        actions.append(
-            "Inspect low-vegetation areas for water stress, nutrient issues, or crop damage."
-        )
+def scouting_summary(df):
+    """
+    Calculate dashboard summary metrics.
+    """
 
-    if not actions:
-        actions.append(
-            "Continue routine scouting and record observations consistently."
-        )
+    if df.empty:
+        return {
+            "points": 0,
+            "high_risk": 0,
+            "avg_moisture": 0,
+            "avg_vegetation": 0,
+        }
 
     return {
-        "high_risk": high_risk,
-        "avg_moisture": float(df["soil_moisture_pct"].mean()),
-        "avg_vegetation": float(df["vegetation_index"].mean()),
-        "actions": actions,
+        "points": len(df),
+        "high_risk": int((df["risk"] == "High").sum()),
+        "avg_moisture": round(
+            float(df["soil_moisture_pct"].mean()), 1
+        ),
+        "avg_vegetation": round(
+            float(df["vegetation_index"].mean()), 2
+        ),
     }

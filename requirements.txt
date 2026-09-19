@@ -1,10 +1,10 @@
 streamlit
 pandas
-folium
-streamlit-folium
 python-dotenv
 google-genai
 geopandas
+folium
+streamlit-folium
 shapely
 pyproj
 fiona
